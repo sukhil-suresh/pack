@@ -85,6 +85,7 @@ func startRegistry(t *testing.T, runRegistryName, username, password string) str
 		},
 	}, &dockercontainer.HostConfig{
 		AutoRemove: true,
+		Isolation: dockercontainer.IsolationProcess,
 		PortBindings: nat.PortMap{
 			"5000/tcp": []nat.PortBinding{{}},
 		},

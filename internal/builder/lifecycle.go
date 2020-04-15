@@ -93,6 +93,7 @@ func (l *lifecycle) binaries() []string {
 		"exporter",
 		"launcher",
 	}
+
 	if l.Descriptor().API.PlatformVersion.Compare(api.MustParse("0.2")) < 0 {
 		binaries = append(binaries, "cacher")
 	}
@@ -125,7 +126,10 @@ func (l *lifecycle) validateBinaries() error {
 	for _, p := range l.binaries() {
 		_, found := headers[p]
 		if !found {
-			return fmt.Errorf("did not find '%s' in tar", p)
+			_, found = headers[p+".exe"]
+			if !found {
+				return fmt.Errorf("did not find '%s' in tar", p)
+			}
 		}
 	}
 	return nil

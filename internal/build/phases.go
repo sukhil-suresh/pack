@@ -11,14 +11,7 @@ import (
 	"github.com/buildpacks/pack/internal/api"
 )
 
-const (
-	layersDir                 = "/layers"
-	appDir                    = "/workspace"
-	cacheDir                  = "/cache"
-	launchCacheDir            = "/launch-cache"
-	platformDir               = "/platform"
-	defaultProcessPlatformAPI = "0.3"
-)
+const defaultProcessPlatformAPI = "0.3"
 
 type RunnerCleaner interface {
 	Run(ctx context.Context) error
@@ -35,8 +28,8 @@ func (l *Lifecycle) Detect(ctx context.Context, networkMode string, volumes []st
 		l,
 		WithArgs(
 			l.withLogLevel(
-				"-app", appDir,
-				"-platform", platformDir,
+				"-app", l.mountPaths.appDir(),
+				"-platform", l.mountPaths.platformDir(),
 			)...,
 		),
 		WithNetwork(networkMode),
@@ -55,11 +48,11 @@ func (l *Lifecycle) Restore(ctx context.Context, cacheName string, phaseFactory 
 		WithDaemonAccess(),
 		WithArgs(
 			l.withLogLevel(
-				"-cache-dir", cacheDir,
-				"-layers", layersDir,
+				"-cache-dir", l.mountPaths.cacheDir(),
+				"-layers", l.mountPaths.layersDir(),
 			)...,
 		),
-		WithBinds(fmt.Sprintf("%s:%s", cacheName, cacheDir)),
+		WithBinds(fmt.Sprintf("%s:%s", cacheName, l.mountPaths.cacheDir())),
 	)
 
 	restore := phaseFactory.New(configProvider)
@@ -78,13 +71,13 @@ func (l *Lifecycle) Analyze(ctx context.Context, repoName, cacheName string, pub
 
 func (l *Lifecycle) newAnalyze(repoName, cacheName string, publish, clearCache bool, phaseFactory PhaseFactory) (RunnerCleaner, error) {
 	args := []string{
-		"-layers", layersDir,
+		"-layers", l.mountPaths.layersDir(),
 		repoName,
 	}
 	if clearCache {
 		args = prependArg("-skip-layers", args)
 	} else {
-		args = append([]string{"-cache-dir", cacheDir}, args...)
+		args = append([]string{"-cache-dir", l.mountPaths.cacheDir()}, args...)
 	}
 
 	if publish {
@@ -99,7 +92,7 @@ func (l *Lifecycle) newAnalyze(repoName, cacheName string, publish, clearCache b
 			WithRegistryAccess(authConfig),
 			WithRoot(),
 			WithArgs(args...),
-			WithBinds(fmt.Sprintf("%s:%s", cacheName, cacheDir)),
+			WithBinds(fmt.Sprintf("%s:%s", cacheName, l.mountPaths.cacheDir())),
 		)
 
 		return phaseFactory.New(configProvider), nil
@@ -117,7 +110,7 @@ func (l *Lifecycle) newAnalyze(repoName, cacheName string, publish, clearCache b
 				)...,
 			)...,
 		),
-		WithBinds(fmt.Sprintf("%s:%s", cacheName, cacheDir)),
+		WithBinds(fmt.Sprintf("%s:%s", cacheName, l.mountPaths.cacheDir())),
 	)
 
 	return phaseFactory.New(configProvider), nil
@@ -132,9 +125,9 @@ func (l *Lifecycle) Build(ctx context.Context, networkMode string, volumes []str
 		"builder",
 		l,
 		WithArgs(
-			"-layers", layersDir,
-			"-app", appDir,
-			"-platform", platformDir,
+			"-layers", l.mountPaths.layersDir(),
+			"-app", l.mountPaths.appDir(),
+			"-platform", l.mountPaths.platformDir(),
 		),
 		WithNetwork(networkMode),
 		WithBinds(volumes...),
@@ -157,13 +150,13 @@ func (l *Lifecycle) Export(ctx context.Context, repoName string, runImage string
 func (l *Lifecycle) newExport(repoName, runImage string, publish bool, launchCacheName, cacheName string, phaseFactory PhaseFactory) (RunnerCleaner, error) {
 	args := l.exportImageArgs(runImage)
 	args = append(args, []string{
-		"-cache-dir", cacheDir,
-		"-layers", layersDir,
-		"-app", appDir,
+		"-cache-dir", l.mountPaths.cacheDir(),
+		"-layers", l.mountPaths.layersDir(),
+		"-app", l.mountPaths.appDir(),
 		repoName,
 	}...)
 
-	binds := []string{fmt.Sprintf("%s:%s", cacheName, cacheDir)}
+	binds := []string{fmt.Sprintf("%s:%s", cacheName, l.mountPaths.cacheDir())}
 
 	if publish {
 		authConfig, err := auth.BuildEnvVar(authn.DefaultKeychain, repoName, runImage)
@@ -185,8 +178,8 @@ func (l *Lifecycle) newExport(repoName, runImage string, publish bool, launchCac
 		return phaseFactory.New(configProvider), nil
 	}
 
-	args = append([]string{"-daemon", "-launch-cache", launchCacheDir}, args...)
-	binds = append(binds, fmt.Sprintf("%s:%s", launchCacheName, launchCacheDir))
+	args = append([]string{"-daemon", "-launch-cache", l.mountPaths.launchCacheDir()}, args...)
+	binds = append(binds, fmt.Sprintf("%s:%s", launchCacheName, l.mountPaths.launchCacheDir()))
 
 	if l.DefaultProcessType != "" {
 		supportsDefaultProcess := api.MustParse(l.platformAPIVersion).SupportsVersion(api.MustParse(defaultProcessPlatformAPI))

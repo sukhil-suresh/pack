@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/buildpacks/imgutil"
 	"github.com/docker/docker/client"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/pkg/errors"
@@ -26,6 +27,44 @@ type Builder interface {
 	UID() int
 	GID() int
 	LifecycleDescriptor() builder.LifecycleDescriptor
+	Image() imgutil.Image
+}
+
+type mountPaths struct {
+	prefix string
+}
+
+func mountPathsForImage(image imgutil.Image) (mountPaths, error) {
+	os, err := image.OS()
+	if err != nil {
+		return mountPaths{}, err
+	}
+
+	prefix := "/"
+	if os == "windows" {
+		prefix = `C:\`
+	}
+	return mountPaths{prefix: prefix}, nil
+}
+
+func (m mountPaths) layersDir() string {
+	return m.prefix + "layers"
+}
+
+func (m mountPaths) appDir() string {
+	return m.prefix + "workspace"
+}
+
+func (m mountPaths) cacheDir() string {
+	return m.prefix + "cache"
+}
+
+func (m mountPaths) launchCacheDir() string {
+	return m.prefix + "launch-cache"
+}
+
+func (m mountPaths) platformDir() string {
+	return m.prefix + "platform"
 }
 
 type Lifecycle struct {
@@ -44,6 +83,7 @@ type Lifecycle struct {
 	Volumes            []string
 	DefaultProcessType string
 	fileFilter         func(string) bool
+	mountPaths         mountPaths
 }
 
 type Cache interface {
@@ -78,7 +118,10 @@ type LifecycleOptions struct {
 }
 
 func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
-	l.Setup(opts)
+	err := l.Setup(opts)
+	if err != nil {
+		return err
+	}
 	defer l.Cleanup()
 
 	buildCache := cache.NewVolumeCache(opts.Image, "build", l.docker)
@@ -125,7 +168,7 @@ func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
 	return nil
 }
 
-func (l *Lifecycle) Setup(opts LifecycleOptions) {
+func (l *Lifecycle) Setup(opts LifecycleOptions) error {
 	l.LayersVolume = "pack-layers-" + randString(10)
 	l.AppVolume = "pack-app-" + randString(10)
 	l.appPath = opts.AppPath
@@ -138,6 +181,13 @@ func (l *Lifecycle) Setup(opts LifecycleOptions) {
 	l.platformAPIVersion = opts.Builder.LifecycleDescriptor().API.PlatformVersion.String()
 	l.DefaultProcessType = opts.DefaultProcessType
 	l.fileFilter = opts.FileFilter
+
+	mountPaths, err := mountPathsForImage(l.builder.Image())
+	if err != nil {
+		return err
+	}
+	l.mountPaths = mountPaths
+	return nil
 }
 
 func (l *Lifecycle) Cleanup() error {

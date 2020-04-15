@@ -9,9 +9,10 @@ import (
 type PhaseConfigProviderOperation func(*PhaseConfigProvider)
 
 type PhaseConfigProvider struct {
-	ctrConf  *container.Config
-	hostConf *container.HostConfig
-	name     string
+	ctrConf    *container.Config
+	hostConf   *container.HostConfig
+	name       string
+	mountPaths mountPaths
 }
 
 func NewPhaseConfigProvider(name string, lifecycle *Lifecycle, ops ...PhaseConfigProviderOperation) *PhaseConfigProvider {
@@ -28,8 +29,8 @@ func NewPhaseConfigProvider(name string, lifecycle *Lifecycle, ops ...PhaseConfi
 	ops = append(ops,
 		WithLifecycleProxy(lifecycle),
 		WithBinds([]string{
-			fmt.Sprintf("%s:%s", lifecycle.LayersVolume, layersDir),
-			fmt.Sprintf("%s:%s", lifecycle.AppVolume, appDir),
+			fmt.Sprintf("%s:%s", lifecycle.LayersVolume, lifecycle.mountPaths.layersDir()),
+			fmt.Sprintf("%s:%s", lifecycle.AppVolume, lifecycle.mountPaths.appDir()),
 		}...),
 	)
 
