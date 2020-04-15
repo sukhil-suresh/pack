@@ -580,3 +580,18 @@ func writeTAR(t *testing.T, srcDir, tarDir string, mode int64, w io.Writer) {
 	err := archive.WriteDirToTar(tw, srcDir, tarDir, 0, 0, mode, true, nil)
 	AssertNil(t, err)
 }
+
+func CreateAndAssignTempPackHome(t *testing.T) (string, error) {
+	t.Helper()
+
+	tempPackHome, err := ioutil.TempDir("", "pack-home")
+	if err != nil {
+		return "", err
+	}
+
+	if err = os.Setenv("PACK_HOME", tempPackHome); err != nil {
+		return "", err
+	}
+
+	return tempPackHome, nil
+}

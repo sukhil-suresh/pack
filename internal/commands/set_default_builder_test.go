@@ -3,6 +3,7 @@ package commands_test
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -33,17 +34,24 @@ func testSetDefaultBuilderCommand(t *testing.T, when spec.G, it spec.S) {
 		outBuf         bytes.Buffer
 		mockController *gomock.Controller
 		mockClient     *testmocks.MockPackClient
+		tempPackHome string
 	)
 
 	it.Before(func() {
+		var err error
+
 		mockController = gomock.NewController(t)
 		mockClient = testmocks.NewMockPackClient(mockController)
 		logger = ilogging.NewLogWithWriters(&outBuf, &outBuf)
 		command = commands.SetDefaultBuilder(logger, config.Config{}, mockClient)
+
+		tempPackHome, err = h.CreateAndAssignTempPackHome(t)
+		h.AssertNil(t, err)
 	})
 
 	it.After(func() {
 		mockController.Finish()
+		h.AssertNil(t, os.RemoveAll(tempPackHome))
 	})
 
 	when("#SetDefaultBuilder", func() {
