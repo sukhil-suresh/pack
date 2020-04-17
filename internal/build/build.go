@@ -34,25 +34,24 @@ type mountPaths struct {
 	prefix string
 }
 
-func mountPathsForImage(image imgutil.Image) (mountPaths, error) {
-	os, err := image.OS()
-	if err != nil {
-		return mountPaths{}, err
-	}
-
+func mountPathsForOS(os string) mountPaths {
 	prefix := "/"
 	if os == "windows" {
-		prefix = `C:\`
+		prefix = `c:\`
 	}
-	return mountPaths{prefix: prefix}, nil
+	return mountPaths{prefix: prefix}
 }
 
 func (m mountPaths) layersDir() string {
 	return m.prefix + "layers"
 }
 
+func (m mountPaths) appDirName() string {
+	return "workspace"
+}
+
 func (m mountPaths) appDir() string {
-	return m.prefix + "workspace"
+	return m.prefix + m.appDirName()
 }
 
 func (m mountPaths) cacheDir() string {
@@ -83,6 +82,7 @@ type Lifecycle struct {
 	Volumes            []string
 	DefaultProcessType string
 	fileFilter         func(string) bool
+	os                 string
 	mountPaths         mountPaths
 }
 
@@ -182,11 +182,12 @@ func (l *Lifecycle) Setup(opts LifecycleOptions) error {
 	l.DefaultProcessType = opts.DefaultProcessType
 	l.fileFilter = opts.FileFilter
 
-	mountPaths, err := mountPathsForImage(l.builder.Image())
+	os, err := l.builder.Image().OS()
 	if err != nil {
 		return err
 	}
-	l.mountPaths = mountPaths
+	l.os = os
+	l.mountPaths = mountPathsForOS(l.os)
 	return nil
 }
 

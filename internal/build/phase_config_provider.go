@@ -12,7 +12,7 @@ type PhaseConfigProvider struct {
 	ctrConf    *container.Config
 	hostConf   *container.HostConfig
 	name       string
-	mountPaths mountPaths
+	os         string
 }
 
 func NewPhaseConfigProvider(name string, lifecycle *Lifecycle, ops ...PhaseConfigProviderOperation) *PhaseConfigProvider {
@@ -20,6 +20,7 @@ func NewPhaseConfigProvider(name string, lifecycle *Lifecycle, ops ...PhaseConfi
 		ctrConf:  new(container.Config),
 		hostConf: new(container.HostConfig),
 		name:     name,
+		os:       lifecycle.os,
 	}
 
 	provider.ctrConf.Cmd = []string{"/cnb/lifecycle/" + name}
@@ -67,8 +68,12 @@ func WithBinds(binds ...string) PhaseConfigProviderOperation {
 
 func WithDaemonAccess() PhaseConfigProviderOperation {
 	return func(provider *PhaseConfigProvider) {
-		provider.ctrConf.User = "root"
-		provider.hostConf.Binds = append(provider.hostConf.Binds, "/var/run/docker.sock:/var/run/docker.sock")
+		bind := "/var/run/docker.sock:/var/run/docker.sock"
+		if provider.os == "windows" {
+			bind = `\\.\pipe\docker_engine:\\.\pipe\docker_engine`
+		}
+		WithRoot()(provider)
+		provider.hostConf.Binds = append(provider.hostConf.Binds, bind)
 	}
 }
 
@@ -100,12 +105,17 @@ func WithNetwork(networkMode string) PhaseConfigProviderOperation {
 func WithRegistryAccess(authConfig string) PhaseConfigProviderOperation {
 	return func(provider *PhaseConfigProvider) {
 		provider.ctrConf.Env = append(provider.ctrConf.Env, fmt.Sprintf(`CNB_REGISTRY_AUTH=%s`, authConfig))
+		// TODO: Find windows equivalent
 		provider.hostConf.NetworkMode = container.NetworkMode("host")
 	}
 }
 
 func WithRoot() PhaseConfigProviderOperation {
 	return func(provider *PhaseConfigProvider) {
-		provider.ctrConf.User = "root"
+		if provider.os == "windows" {
+			provider.ctrConf.User = "ContainerAdministrator"
+		} else {
+			provider.ctrConf.User = "root"
+		}
 	}
 }
