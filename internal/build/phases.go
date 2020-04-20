@@ -3,12 +3,21 @@ package build
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"runtime"
+	"strings"
 
 	"github.com/Masterminds/semver"
 	"github.com/buildpacks/lifecycle/auth"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/pkg/errors"
 
 	"github.com/buildpacks/pack/internal/api"
+	"github.com/buildpacks/pack/internal/archive"
+	"github.com/buildpacks/pack/internal/style"
 )
 
 const defaultProcessPlatformAPI = "0.3"
@@ -20,6 +29,68 @@ type RunnerCleaner interface {
 
 type PhaseFactory interface {
 	New(provider *PhaseConfigProvider) RunnerCleaner
+}
+
+// TODO: Test this
+func (l *Lifecycle) prepareAppVolume(ctx context.Context) error {
+	tarExtractPath := "/"
+	entrypoint := ""
+	if l.os == "windows" {
+		tarExtractPath = "/windows"
+		entrypoint = fmt.Sprintf(`xcopy c:%s\%s %s /E /H /Y /C /B &&`, style.Symbol(l.mountPaths.appDir()), strings.ReplaceAll(tarExtractPath, "/", `\`), l.mountPaths.appDirName(), l.mountPaths.appDir())
+	}
+
+	ctr, err := l.docker.ContainerCreate(ctx,
+		&container.Config{
+			Entrypoint: []string{entrypoint},
+		},
+		&container.HostConfig{
+			Binds: []string{fmt.Sprintf("%s:%s", l.AppVolume, l.mountPaths.appDir())},
+		},
+		nil, "",
+	)
+	if err != nil {
+		return errors.Wrapf(err, "creating prep container")
+	}
+	defer l.docker.ContainerRemove(context.Background(), ctr.ID, types.ContainerRemoveOptions{Force: true})
+
+	if l.os == "windows" {
+		// run container
+	}
+	return nil
+}
+
+func (l *Lifecycle) createAppReader() (io.ReadCloser, error) {
+	fi, err := os.Stat(l.appPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if fi.IsDir() {
+		var mode int64 = -1
+		if runtime.GOOS == "windows" {
+			mode = 0777
+		}
+
+		return archive.ReadDirAsTar(l.appPath, "/"+l.mountPaths.appDirName(), l.builder.UID(), l.builder.GID(), mode, false, l.fileFilter), nil
+	}
+
+	return archive.ReadZipAsTar(l.appPath, "/"+l.mountPaths.appDirName(), l.builder.UID(), l.builder.GID(), -1, false, l.fileFilter), nil
+}
+
+func (l *Lifecycle) copyAppToContainer(ctx context.Context, container, path string) error {
+	appReader, err := l.createAppReader()
+	if err != nil {
+		return errors.Wrapf(err, "create tar archive from '%s'", l.appPath)
+	}
+	defer appReader.Close()
+
+	err = l.docker.CopyToContainer(ctx, container, path, appReader, types.CopyToContainerOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to copy app directory")
+	}
+
+	return nil
 }
 
 func (l *Lifecycle) Detect(ctx context.Context, networkMode string, volumes []string, phaseFactory PhaseFactory) error {

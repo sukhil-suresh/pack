@@ -22,5 +22,6 @@ func (d *DefaultPhaseFactory) New(provider *PhaseConfigProvider) RunnerCleaner {
 		appOnce:    d.lifecycle.appOnce,
 		fileFilter: d.lifecycle.fileFilter,
 		os:         provider.os,
+		appVolume:  d.lifecycle.AppVolume,
 	}
 }

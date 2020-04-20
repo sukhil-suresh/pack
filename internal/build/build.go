@@ -137,6 +137,11 @@ func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
 
 	phaseFactory := NewDefaultPhaseFactory(l)
 
+	l.logger.Info(style.Step("PREPARING"))
+	if err := l.prepareAppVolume(ctx); err != nil {
+		return err
+	}
+
 	l.logger.Info(style.Step("DETECTING"))
 	if err := l.Detect(ctx, opts.Network, opts.Volumes, phaseFactory); err != nil {
 		return err
